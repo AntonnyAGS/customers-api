@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { IsString } from 'class-validator';
 import { randomUUID } from 'crypto';
-import { CacheService } from './cache.service';
-import { RedisClient } from './constants';
+import { RedisService } from './redis.service';
+import Redis from 'ioredis';
+import { BadGatewayException, BadRequestException } from '@nestjs/common';
 
 type MockedRedis = {
   set: () => Promise<'OK'>;
   get: () => Promise<string>;
+  del: () => Promise<void>;
 };
 
 class MockedCacheValue {
@@ -18,27 +20,30 @@ class MockedCacheValue {
   }
 }
 
-describe('CacheService', () => {
-  let service: CacheService;
-  const redis: MockedRedis = {
-    set: jest.fn(() => Promise.resolve('OK')),
-    get: jest.fn(() =>
-      Promise.resolve(JSON.stringify({ email: 'mocked@mocked.com' })),
-    ),
-  };
+describe('RedisService', () => {
+  let service: RedisService;
+  let redis: MockedRedis;
 
   beforeEach(async () => {
+    redis = {
+      set: jest.fn(() => Promise.resolve('OK')),
+      get: jest.fn(() =>
+        Promise.resolve(JSON.stringify({ email: 'mocked@mocked.com' })),
+      ),
+      del: jest.fn(() => Promise.resolve()),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        CacheService,
+        RedisService,
         {
           useValue: redis,
-          provide: RedisClient.DefaultClient,
+          provide: Redis,
         },
       ],
     }).compile();
 
-    service = module.get<CacheService>(CacheService);
+    service = module.get<RedisService>(RedisService);
   });
 
   it('should be defined', () => {
@@ -61,11 +66,31 @@ describe('CacheService', () => {
     expect(result).toBeDefined();
   });
 
+  it('should delete data from cache', async () => {
+    const result = await service.delete('customer', randomUUID());
+
+    expect(result).toBe(undefined);
+  });
+
   it('should return instance of class on get data from cache', async () => {
     const result = await service.get('customer', randomUUID(), {
       dataType: MockedCacheValue,
     });
 
     expect(result).toBeInstanceOf(MockedCacheValue);
+  });
+
+  it('should throw bad gateway exception if redis throw error', async () => {
+    jest
+      .spyOn(redis, 'get')
+      .mockImplementation(() => Promise.reject(new BadRequestException()));
+
+    const result = service.get('customer', 'mockedKey', {
+      dataType: MockedCacheValue,
+    });
+
+    expect(result).rejects.toThrow(
+      new BadGatewayException('Could not fetch cache'),
+    );
   });
 });

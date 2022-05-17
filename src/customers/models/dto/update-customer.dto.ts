@@ -9,10 +9,4 @@ export class UpdateCustomerDTO {
 
   @IsString()
   readonly name: string;
-
-  // constructor(init?: AddCustomerDTO) {
-  //   this.id = init?.id;
-  //   this.document = init?.document;
-  //   this.name = init?.name;
-  // }
 }
